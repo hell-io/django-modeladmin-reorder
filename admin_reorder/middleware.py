@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from __future__ import unicode_literals
+from itertools import groupby
 
 from copy import deepcopy
 
@@ -31,8 +32,14 @@ class ModelAdminReorder(MiddlewareMixin):
 
         self.config = getattr(settings, 'ADMIN_REORDER', None)
         if not self.config:
-            # ADMIN_REORDER settings is not defined.
-            raise ImproperlyConfigured('ADMIN_REORDER config is not defined.')
+            # ADMIN_REORDER is not defined in settings.
+            self.config = getattr(admin.site, 'admin_reorder', None)
+            if not self.config:
+                raise ImproperlyConfigured('ADMIN_REORDER config is not defined.')
+
+        if getattr(settings, 'PRESERVE_UNORDERED_MODELS', False):
+            # Append all registered models that aren't included in reorder
+            self.preserve_unordered_models()
 
         if not isinstance(self.config, (tuple, list)):
             raise ImproperlyConfigured(
@@ -54,6 +61,28 @@ class ModelAdminReorder(MiddlewareMixin):
                 model['model_name'] = self.get_model_name(
                     app['app_label'], model['object_name'])
                 self.models_list.append(model)
+
+    def preserve_unordered_models(self):
+        if not getattr(self, 'config', None):
+            return
+
+        admin_models = sorted([am._meta.label for am in admin.site._registry])
+
+        reordered_models = []
+        for app in self.config:
+            for model in app['models']:
+                reordered_models.append(model['model'])
+
+        remaining_models = []
+
+        for app, models in groupby(admin_models, key=lambda m: m.split('.')[0]):
+            models = [m for m in models if not m in reordered_models]
+            remaining_models.append(
+                {"app": app,
+                 "models": models}
+            )
+
+        self.config = (*remaining_models, *self.config)
 
     def get_app_list(self):
         ordered_app_list = []
