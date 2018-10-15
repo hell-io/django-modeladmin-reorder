@@ -70,8 +70,9 @@ class ModelAdminReorder(MiddlewareMixin):
 
         reordered_models = []
         for app in self.config:
-            for model in app['models']:
-                reordered_models.append(model['model'])
+            for model in app.get('models'):
+                model_name = model['model'] if isinstance(model, dict) else model
+                reordered_models.append(model_name)
 
         remaining_models = []
 
